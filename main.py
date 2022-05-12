@@ -1,13 +1,12 @@
 import os
 import logging
-from tkinter.messagebox import QUESTION
 
-from sympy import ordered
+import telegram
 from strings import *;
 
-from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
+from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update, constants
 from telegram.ext import (
-    Application,
+    ApplicationBuilder,
     CallbackContext,
     CommandHandler,
     ConversationHandler,
@@ -23,21 +22,33 @@ logger = logging.getLogger(__name__)
 
 
 Q_NUM = 4
-Q1, Q2, Q3, Q4, RESULT = range(Q_NUM)
+Q1, Q2, Q3, Q4, RESULT = range(Q_NUM+1)
 
 def generate_question_state(question_id: int, next_state: int):
     async def state(update: Update, context: CallbackContext.DEFAULT_TYPE) -> int:
         if (question_id-1 >= 0):
             user = update.message.from_user
-            ans = int(update.message.text[0])
             try:
+                ans = int(update.message.text[0]) - 1
                 context.user_data[f"ans_{question_id-1}"] = questions[question_id-1].tokens[ans]
             except KeyError as e:
-                pass
+                await update.message.reply_text(
+                    "Сталась якась помилка на нашому боці. Вибачте. Спробуйте знову через пару хвилин.",
+                    parse_mode='MARKDOWN_V2',
+                    reply_markup=ReplyKeyboardMarkup([["/start"]], one_time_keyboard=True)
+                )
+                return ConversationHandler.END
+            except ValueError as e:
+                await update.message.reply_text(
+                    "Сталась якась помилка на нашому боці. Вибачте. Спробуйте знову через пару хвилин.",
+                    parse_mode='MARKDOWN_V2',
+                    reply_markup=ReplyKeyboardMarkup([["/start"]], one_time_keyboard=True)
+                )
+                return ConversationHandler.END
 
-        ordered_answers = [str(i) + ". " + ans for i,ans in enumerate(questions[question_id].answers)];
+        ordered_answers = [str(i+1) + ". " + ans for i,ans in enumerate(questions[question_id].answers)];
         
-        reply_keyboard = ordered_answers
+        reply_keyboard = [[option] for option in ordered_answers]
         msg = questions[question_id].text + "\n\n" + "\n".join(ordered_answers)
 
         await update.message.reply_text(
@@ -65,21 +76,37 @@ async def start(update: Update, context: CallbackContext.DEFAULT_TYPE) -> int:
 
 async def show_result(update: Update, context: CallbackContext.DEFAULT_TYPE) -> int:
     user = update.message.from_user
-    ans = int(update.message.text[0])
     try:
-        context.user_data[f"ans_{question_id-1}"] = questions[question_id-1].tokens[ans]
+        ans = int(update.message.text[0]) - 1
+        context.user_data[f"ans_{Q4}"] = questions[Q4].tokens[ans]
     except KeyError as e:
-        pass
+        await update.message.reply_text(
+            "Сталась якась помилка на нашому боці. Вибачте. Спробуйте знову через пару хвилин.",
+            parse_mode=constants.ParseMode.HTML,
+            reply_markup=ReplyKeyboardMarkup([["/start"]], one_time_keyboard=True)
+        )
+        return ConversationHandler.END
+    except ValueError as e:
+        await update.message.reply_text(
+            "Сталась якась помилка на нашому боці. Вибачте. Спробуйте знову через пару хвилин.",
+            parse_mode=constants.ParseMode.HTML,
+            reply_markup=ReplyKeyboardMarkup([["/start"]], one_time_keyboard=True)
+        )
+        return ConversationHandler.END
 
     await update.message.reply_text(
-        default_ans,
-        reply_markup=ReplyKeyboardRemove
+        default_ans[0],
+        parse_mode=constants.ParseMode.HTML,
+        reply_markup=ReplyKeyboardRemove()
     )
 
     for i in range(Q_NUM):
         token = context.user_data[f"ans_{i}"]
         if token > 0:
-            update.message.reply_text(special_ans[token])
+            await update.message.reply_text(
+                special_ans[token],
+                parse_mode=constants.ParseMode.HTML
+            )
     
     return ConversationHandler.END
 
@@ -90,18 +117,19 @@ def main() -> None:
     if (TOKEN == "none"):
         raise ValueError("Sorry, no telegram bot api token found. Aborting.")
 
-    application = Application.builder().token(TOKEN).build()
+    application = ApplicationBuilder().token(TOKEN).build()
 
     # Add conversation handler with the states GENDER, PHOTO, LOCATION and BIO
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
+        entry_points=[CommandHandler("start", start), MessageHandler(filters.ALL, start)],
         states={
-            Q1: generate_question_state(Q1, Q2),
-            Q2: generate_question_state(Q2, Q3),
-            Q3: generate_question_state(Q3, Q4),
-            Q4: generate_question_state(Q4, RESULT),
-            RESULT: show_result
-        }
+            Q1: [MessageHandler(filters.ALL, generate_question_state(Q1, Q2))],
+            Q2: [MessageHandler(filters.TEXT, generate_question_state(Q2, Q3))],
+            Q3: [MessageHandler(filters.TEXT, generate_question_state(Q3, Q4))],
+            Q4: [MessageHandler(filters.TEXT, generate_question_state(Q4, RESULT))],
+            RESULT: [MessageHandler(filters.TEXT, show_result)]
+        },
+        fallbacks=[]
     )
 
     application.add_handler(conv_handler)
