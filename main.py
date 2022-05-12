@@ -34,14 +34,14 @@ def generate_question_state(question_id: int, next_state: int):
             except KeyError as e:
                 await update.message.reply_text(
                     "Сталась якась помилка на нашому боці. Вибачте. Спробуйте знову через пару хвилин.",
-                    parse_mode=constants.ParseMode.MARKDOWN_V2,
+                    parse_mode=constants.ParseMode.HTML,
                     reply_markup=ReplyKeyboardMarkup([["/start"]], one_time_keyboard=True)
                 )
                 return ConversationHandler.END
             except ValueError as e:
                 await update.message.reply_text(
                     "Сталась якась помилка на нашому боці. Вибачте. Спробуйте знову через пару хвилин.",
-                    parse_mode=constants.ParseMode.MARKDOWN_V2,
+                    parse_mode=constants.ParseMode.HTML,
                     reply_markup=ReplyKeyboardMarkup([["/start"]], one_time_keyboard=True)
                 )
                 return ConversationHandler.END
